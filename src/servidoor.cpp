@@ -19,86 +19,65 @@ static void die(const std::string msg) {
     abort();
 }
 
-static int32_t read_full(int fd, std::vector<char> buf, size_t n) {
-    size_t index = 0;
-
-    while (n > 0) 
-    {
-        int rv = recv(fd, buf.data() + index, n, 0);
-        if (rv <= 0) 
-        {
-            return -1;
+static int32_t read_full(SOCKET fd, std::vector<char>& buf, size_t n) {
+    buf.resize(n);
+    size_t bytesRead = 0;
+    while (bytesRead < n) {
+        int rv = recv(fd, &buf[bytesRead], n - bytesRead, 0);
+        if (rv <= 0) {
+            return -1; 
         }
-        assert((size_t)rv <= n);
-        n -= static_cast<size_t>(rv);
-        index += rv;
+        bytesRead += rv;
     }
-
     return 0;
 }
 
-static int32_t write_all(int fd, const std::vector<char>& buf, int n) {
-    size_t index = 0;
-
-    while (n > 0)
-    {
-        int rv = send(fd, buf.data() + index, n, 0);
-        if (rv <= 0) 
-        {
-            return -1;
+static int32_t write_all(SOCKET fd, const std::vector<char>& buf, size_t n) {
+    size_t bytesWritten = 0;
+    while (bytesWritten < n) {
+        int rv = send(fd, &buf[bytesWritten], n - bytesWritten, 0);
+        if (rv <= 0) {
+            return -1; 
         }
-
-        assert((size_t)rv <= n);
-        n -= static_cast<size_t>(rv);
-        index += rv;
-
+        bytesWritten += rv;
     }
-
     return 0;
 }
 
-static int32_t one_request(int fd) {
+static int32_t one_request(SOCKET connfd) {
     std::vector<char> rbuf(4 + k_max_msg + 1);
-    errno = 0;
-    int32_t err = read_full(fd, rbuf, rbuf.size());
-    if (err) 
-    {
-        if (errno == 0) 
-        {
-            msg("EOF");
-        }
-        else
-        {
-            msg("read() error");
-        }
+    int32_t err = read_full(connfd, rbuf, 4);
+    if (err) {
+        msg("read() error"s);
         return err;
     }
 
     uint32_t len = 0;
-    std::memcpy(&len, rbuf.data(), rbuf.size());
-    if (len > k_max_msg) 
-    {
-        msg("too long");
+    std::memcpy(&len, &rbuf[0], 4); 
+    if (len > k_max_msg) {
+        msg("too long"s);
         return -1;
     }
 
-    err = read_full(fd, rbuf, len);
-    if (err) 
-    {
-        msg("read() error");
+   
+    err = read_full(connfd, rbuf, len);
+    if (err) {
+        msg("read() error"s);
         return err;
     }
 
-    rbuf[4 + len] = '\0';
-    std::string clientMsg(rbuf.begin(), rbuf.end());
-    std::cout << "Client Say " << clientMsg << '\n';
+    
+    rbuf[len] = '\0';
+    std::string clientMsg{rbuf.begin(), rbuf.end()};
+    std::cout << "client says: "s << clientMsg << '\n';
 
-    std::string reply{"world"s};
-    std::vector<char> wbuf(4 + sizeof(reply));
-    len = (uint32_t)wbuf.size();
-    std::memcpy(wbuf.data(), &len, 4);
-    std::memcpy(wbuf.data(), reply.c_str(), len); 
-    return write_all(fd, wbuf, 4 + len);
+
+    const std::string reply {"world"s};
+    std::vector<char> wbuf(4 + reply.size());
+    len = (uint32_t)reply.size();
+    std::memcpy(&wbuf[0], &len, 4);
+    std::memcpy(&wbuf[4], reply.data(), len);
+    return write_all(connfd, wbuf, 4 + len);
 }
 
 int main() {
