@@ -5,10 +5,27 @@
 #include <vector>
 #include <cassert>
 #include <cstring>
+#include <memory>
 
 using namespace std::string_literals;
 
 const size_t k_max_msg = 4096; 
+
+enum {
+    STATE_REQ = 0,
+    STATE_RES = 1,
+    STATE_END = 2,
+};
+
+struct Conn{
+    SOCKET fd = -1;
+    uint32_t state = 0;
+    size_t rbuf_size = 0;
+    std::array<char, 4 + k_max_msg> rbuf{};
+    size_t wbuf_size = 0;
+    size_t wbuf_sent = 0;
+    std::array<char, 4 + k_max_msg> wbuf{};
+};
 
 static void msg(const std::string msg) {
     std::cout << msg;
@@ -19,66 +36,159 @@ static void die(const std::string msg) {
     abort();
 }
 
-static int32_t read_full(SOCKET fd, std::vector<char>& buf, size_t n) {
-    buf.resize(n);
-    size_t bytesRead = 0;
-    while (bytesRead < n) {
-        int rv = recv(fd, &buf[bytesRead], n - bytesRead, 0);
-        if (rv <= 0) {
-            return -1; 
-        }
-        bytesRead += rv;
+static void fd_set_nb(SOCKET fd) {
+    u_long mode = 1;
+    if (ioctlsocket(fd, FIONBIO, &mode) != 0) {
+        std::cout  << "Failed to set socket to non-blocking mode"s << '\n';
+        return;
     }
-    return 0;
 }
 
-static int32_t write_all(SOCKET fd, const std::vector<char>& buf, size_t n) {
-    size_t bytesWritten = 0;
-    while (bytesWritten < n) {
-        int rv = send(fd, &buf[bytesWritten], n - bytesWritten, 0);
-        if (rv <= 0) {
-            return -1; 
-        }
-        bytesWritten += rv;
+static void conn_put(std::vector<Conn *> &fd2conn, struct Conn *conn) {
+    if (fd2conn.size() <= (size_t)conn->fd) {
+        fd2conn.resize(conn->fd + 1);
     }
-    return 0;
+    fd2conn[conn->fd] = conn;
 }
 
-static int32_t one_request(SOCKET connfd) {
-    std::vector<char> rbuf(4 + k_max_msg + 1);
-    int32_t err = read_full(connfd, rbuf, 4);
-    if (err) {
-        msg("read() error"s);
-        return err;
-    }
-
-    uint32_t len = 0;
-    std::memcpy(&len, &rbuf[0], 4); 
-    if (len > k_max_msg) {
-        msg("too long"s);
+static int32_t accept_new_conn(std::vector<std::unique_ptr<Conn>>& fd2conn, SOCKET fd) {
+    struct sockaddr_in client_addr =  {};
+    int socklen = sizeof(client_addr);
+    SOCKET connfd = accept(fd, (struct sockaddr *)&client_addr, &socklen);
+    if  (connfd == INVALID_SOCKET) {
+        std::cout << "Failed to accept new connection" << '\n';
         return -1;
     }
 
-   
-    err = read_full(connfd, rbuf, len);
-    if (err) {
-        msg("read() error"s);
-        return err;
+    fd_set_nb(connfd);
+    std::unique_ptr<Conn> newConn = std::make_unique<Conn>();
+    if (!newConn) {
+        closesocket(connfd);
+        return -1;
+    }
+    newConn->fd = connfd;
+    newConn->state = STATE_REQ;
+    newConn->rbuf_size = 0;
+    newConn->wbuf_size = 0;
+    newConn->wbuf_sent = 0;
+
+   fd2conn.push_back(std::move(newConn));
+
+   return 0;
+}
+
+static bool try_flush_buffer(Conn *conn) {
+    int rv = 0;
+    do {
+        size_t remain = conn->wbuf_size - conn->wbuf_sent;
+        rv = send(conn->fd, &conn->wbuf[conn->wbuf_sent], remain, 0);
+    } while (rv < 0 && WSAGetLastError() == WSAEINTR);
+    if (rv < 0 && WSAGetLastError() == EAGAIN) {
+        return false;
     }
 
-    
-    rbuf[len] = '\0';
-    std::string clientMsg{rbuf.begin(), rbuf.end()};
-    std::cout << "client says: "s << clientMsg << '\n';
+    if (rv < 0) {
+        msg("send() error");
+        conn->state = STATE_END;
+        return false;
+    }
+    conn->wbuf_sent += (size_t)rv;
+    assert(conn->wbuf_sent <= conn->wbuf_size);
+    if (conn->wbuf_sent == conn->wbuf_size) {
+        conn->state = STATE_REQ;
+        conn->wbuf_sent = 0;
+        conn->wbuf_size = 0;
+        return false;
+    }
 
-
-    const std::string reply {"world"s};
-    std::vector<char> wbuf(4 + reply.size());
-    len = (uint32_t)reply.size();
-    std::memcpy(&wbuf[0], &len, 4);
-    std::memcpy(&wbuf[4], reply.data(), len);
-    return write_all(connfd, wbuf, 4 + len);
+    return true;
 }
+
+static void state_res(Conn *conn) {
+    while(try_flush_buffer(conn)) {}
+}
+
+static bool try_one_request(Conn *conn) {
+    if (conn->rbuf_size < 4) {
+        return false;
+    }
+
+    uint32_t len = 0;
+    std::memcpy(&len, &conn->rbuf[0], 4);
+    if (len > k_max_msg) {
+        msg("too long");
+        conn->state = STATE_END;
+        return false;
+    }
+
+    if (4 + len > conn->rbuf_size) {
+        return false;
+    }
+
+    std::cout << "Client says: " << len << &conn->rbuf[4];
+
+    std::memcpy(&conn->wbuf[0],  &len, 4);
+    std::memcpy(&conn->wbuf[4], &conn->rbuf[4], len);
+    conn->wbuf_size = 4 + len;
+
+    size_t remain = conn->rbuf_size - 4 - len;
+    if (remain) {
+        std::memmove(&conn->rbuf, &conn->rbuf[4 + len], remain);
+    }
+    conn->rbuf_size = remain;
+
+    conn->state  = STATE_REQ;
+    state_res(conn);
+
+    return (conn->state == STATE_REQ);
+}
+
+static bool try_fill_buffer(Conn *conn) {
+    assert(conn->rbuf_size < sizeof(conn->rbuf));
+    int rv = 0;
+    do {
+        size_t cap = sizeof(conn->rbuf) - conn->rbuf_size;
+        rv = recv(conn->fd, conn->rbuf.data() + conn->rbuf_size, static_cast<int>(cap), 0);
+    } while (rv < 9 && (WSAGetLastError() == WSAEINTR));
+
+    if (rv == 0) {
+        if (conn->rbuf_size > 0) {
+            std::cout << "Unexpected EOF" << '\n';
+        } else {
+            std::cout << "EOF" << '\n';
+        }
+        conn->state = STATE_END;
+        return false;
+    }
+
+    if (rv < 0) {
+        std::cout << "recv() error" << '\n';
+        conn->state = STATE_END;
+        return false;
+    }
+
+    conn->rbuf_size += static_cast<size_t>(rv);
+    assert(conn->rbuf_size <= conn->rbuf.size());
+
+    while(try_one_request(conn)) {}
+    return (conn->state == STATE_REQ);
+}
+
+static void state_req(Conn *conn) {
+    while(try_fill_buffer(conn)) {}
+}
+
+
+static void connection_io(Conn *conn) {
+    if (conn->state == STATE_REQ) {
+        state_req(conn);
+    } else if (conn->state == STATE_RES) {
+        state_res(conn);
+    } else {
+        assert(0);
+    }
+}
+
 
 int main() {
     WSADATA wsaData;
@@ -111,22 +221,46 @@ int main() {
         die("listen()"s);
     }
 
+    std::vector<std::unique_ptr<Conn>> fd2conn;
+
+    fd_set_nb(fd);
+
+    std::vector<struct pollfd> poll_args{};
     while (true) {
-        struct sockaddr_in client_addr = {};
-        int socklen = sizeof(client_addr);
-        SOCKET connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
-        if (connfd == INVALID_SOCKET) {
-            continue; 
+        poll_args[0].fd = fd;
+        poll_args[0].events = POLLIN;
+        poll_args[0].revents = 0;
+
+        for (size_t i = 0; i < fd2conn.size(); ++i) {
+            Conn* conn = fd2conn[i - 1].get();
+            if (!conn) {
+                continue;
+            }
+            poll_args[i + 1].fd = conn->fd;
+            poll_args[i + 1].events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
+            poll_args[i + 1].revents = 0;
         }
 
-        while (true) {
-            int32_t err = one_request(connfd);
-            if (err) {
-                break;
+        int rv = WSAPoll(poll_args.data(), poll_args.size(), 1000);
+        if (rv < 0) {
+            std::cout << "WSAPoll error" << '\n';
+            WSACleanup();
+            return 1;
+        }
+
+        for (size_t i = 1; i < poll_args.size(); i++) {
+            if (poll_args[i].revents) {
+                Conn* conn =  fd2conn[i - 1].get();
+                connection_io(conn);
+                if (conn->state == STATE_END) {
+                    fd2conn[conn->fd] = nullptr;
+                    closesocket(conn->fd);
+                }
             }
         }
-
-        closesocket(connfd);
+        if (poll_args[0].revents) {
+            accept_new_conn(fd2conn, fd);
+        }
     }
 
     closesocket(fd);

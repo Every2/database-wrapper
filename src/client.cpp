@@ -23,6 +23,8 @@ static int32_t read_full(SOCKET fd, std::vector<char>& buf, size_t n) {
     buf.resize(n);
     size_t bytesRead = 0;
     while (bytesRead < n) {
+        //&buf[bytesWritten]: The pointer to the buffer containing the data to be sent. It specifies the starting address of the portion of the buffer that is yet to be sent.
+        //n - bytesWritten: The remaining number of bytes to be sent from the buffer.
         int rv = recv(fd, &buf[bytesRead], n - bytesRead, 0);
         if (rv <= 0) {
             return -1; 
@@ -44,49 +46,47 @@ static int32_t write_all(SOCKET fd, const std::vector<char>& buf, size_t n) {
     return 0;
 }
 
-
-static int32_t query(SOCKET fd, const std::string& text) {
-    uint32_t len = static_cast<uint32_t>(text.length());
+static int32_t send_req(SOCKET fd, const std::string text) {
+    uint32_t len = (uint32_t)text.size();
     if (len > k_max_msg) {
         return -1;
     }
 
-    std::vector<char> wbuf(4 + len);
+    std::vector<char> wbuf(4 + k_max_msg);
     std::memcpy(wbuf.data(), &len, 4);
-    std::memcpy(wbuf.data() + 4, text.data(), len);
-    
-    if (int32_t err = write_all(fd, wbuf, 4 + len)) {
-        return err;
-    }
+    std::memcpy(&wbuf[4], text.data(), len);
+    return write_all(fd, wbuf, 4 + len);
+}
 
+static int32_t read_res(SOCKET fd) {
     std::vector<char> rbuf(4 + k_max_msg + 1);
-    errno = 0;
-    int32_t err = read_full(fd, rbuf, 4);
-    if (err) {
-        if (errno == 0) {
-            msg("EOF"s);
+    int32_t err = recv(fd, rbuf.data(), 4, 0);
+    if (err == SOCKET_ERROR) {
+        int errorCode = WSAGetLastError();
+        if (errorCode == 0) {
+            std::cout << "EOF" << '\n';
         } else {
-            msg("read() error"s);
+            std::cout << "recv() error" << '\n';
         }
         return err;
     }
-    
+
+    uint32_t len = 0;
     std::memcpy(&len, rbuf.data(), 4);
-    
     if (len > k_max_msg) {
-        msg("too long"s);
+        std::cout << "too long" << '\n';
         return -1;
     }
 
-    err = read_full(fd, rbuf, len);
-    if (err) {
-        msg("read error()"s);
+    err = recv(fd, &rbuf[4], len, 0);
+    if (err == SOCKET_ERROR) {
+        std::cout << "recv() error" << '\n';
         return err;
     }
 
-    rbuf[4 + len] = '\0';
+    rbuf[4 + len] = '\n';
     std::string serverMsg{rbuf.begin(), rbuf.end()};
-    std::cout << "Server says: "s << serverMsg << '\n';
+    std::cout << "server says: " <<  serverMsg << '\n';
     return 0;
 }
 
@@ -110,19 +110,20 @@ int main() {
         die("connect"s);
     }
 
-    int32_t err = query(fd, "hello1"s);
-    if (err) {
-        goto L_DONE;
+    std::array<std::string, 3> query_list{"hello1", "hello2", "hello3"};
+    for (size_t i = 0; i < query_list.size(); ++i) {
+        int32_t err = send_req(fd, query_list[i]);
+        if (err) {
+            goto L_DONE;
+        }
+
     }
 
-    err = query(fd, "hello2"s);
-    if (err) {
-        goto L_DONE;
-    }
-
-    err = query(fd, "hello3"s);
-    if (err) {
-        goto L_DONE;
+    for (size_t i = 0; i < query_list.size(); ++i) {
+        int32_t err = read_res(fd);
+        if (err) {
+            goto L_DONE;
+        }
     }
 
     L_DONE:
