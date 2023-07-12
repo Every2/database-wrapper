@@ -60,13 +60,13 @@ static int32_t send_req(SOCKET fd, const std::string text) {
 
 static int32_t read_res(SOCKET fd) {
     std::vector<char> rbuf(4 + k_max_msg + 1);
-    int32_t err = recv(fd, rbuf.data(), 4, 0);
+    int32_t err = read_full(fd, rbuf, 4);
     if (err == SOCKET_ERROR) {
         int errorCode = WSAGetLastError();
         if (errorCode == 0) {
-            std::cout << "EOF" << '\n';
+            msg("EOF");
         } else {
-            std::cout << "recv() error" << '\n';
+           msg("read() error");
         }
         return err;
     }
@@ -74,18 +74,18 @@ static int32_t read_res(SOCKET fd) {
     uint32_t len = 0;
     std::memcpy(&len, rbuf.data(), 4);
     if (len > k_max_msg) {
-        std::cout << "too long" << '\n';
+        msg("too long");
         return -1;
     }
 
     err = recv(fd, &rbuf[4], len, 0);
     if (err == SOCKET_ERROR) {
-        std::cout << "recv() error" << '\n';
+        msg("recv() error");
         return err;
     }
 
     rbuf[4 + len] = '\n';
-    std::string serverMsg{rbuf.begin(), rbuf.end()};
+    std::string serverMsg{rbuf.begin(), rbuf.end() + 4 + len};
     std::cout << "server says: " <<  serverMsg << '\n';
     return 0;
 }

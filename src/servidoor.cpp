@@ -11,6 +11,9 @@ using namespace std::string_literals;
 
 const size_t k_max_msg = 4096; 
 
+static void state_req(Conn *conn);
+static void state_res(Conn *conn);
+
 enum {
     STATE_REQ = 0,
     STATE_RES = 1,
@@ -44,12 +47,7 @@ static void fd_set_nb(SOCKET fd) {
     }
 }
 
-static void conn_put(std::vector<Conn *> &fd2conn, struct Conn *conn) {
-    if (fd2conn.size() <= (size_t)conn->fd) {
-        fd2conn.resize(conn->fd + 1);
-    }
-    fd2conn[conn->fd] = conn;
-}
+
 
 static int32_t accept_new_conn(std::vector<std::unique_ptr<Conn>>& fd2conn, SOCKET fd) {
     struct sockaddr_in client_addr =  {};
@@ -73,6 +71,8 @@ static int32_t accept_new_conn(std::vector<std::unique_ptr<Conn>>& fd2conn, SOCK
     newConn->wbuf_sent = 0;
 
    fd2conn.push_back(std::move(newConn));
+   
+   
 
    return 0;
 }
@@ -221,36 +221,38 @@ int main() {
         die("listen()"s);
     }
 
-    std::vector<std::unique_ptr<Conn>> fd2conn;
-
+    std::vector<std::unique_ptr<Conn, std::default_delete<Conn>>> uniquePtrVector;
+    std::vector<Conn *> fd2conn;
+    
     fd_set_nb(fd);
 
     std::vector<struct pollfd> poll_args{};
     while (true) {
-        poll_args[0].fd = fd;
-        poll_args[0].events = POLLIN;
-        poll_args[0].revents = 0;
+        poll_args.clear();
+
+        struct pollfd pfd = {fd, POLLIN, 0};
+        poll_args.push_back(pfd);
 
         for (size_t i = 0; i < fd2conn.size(); ++i) {
-            Conn* conn = fd2conn[i - 1].get();
+            Conn* conn = fd2conn[i];
             if (!conn) {
                 continue;
-            }
-            poll_args[i + 1].fd = conn->fd;
-            poll_args[i + 1].events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
-            poll_args[i + 1].revents = 0;
+            }       
+            struct pollfd pfd = {};
+            pfd.fd = static_cast<SOCKET>(i);
+            pfd.events = (conn->state == STATE_REQ) ? POLLIN  : POLLOUT;
+            pfd.events = pfd.events | POLLERR;
+            poll_args.push_back(pfd);
         }
 
         int rv = WSAPoll(poll_args.data(), poll_args.size(), 1000);
         if (rv < 0) {
-            std::cout << "WSAPoll error" << '\n';
-            WSACleanup();
-            return 1;
+            die("pool");
         }
 
-        for (size_t i = 1; i < poll_args.size(); i++) {
+        for (size_t i = 1; i < poll_args.size(); ++i) {
             if (poll_args[i].revents) {
-                Conn* conn =  fd2conn[i - 1].get();
+                Conn *conn = fd2conn[poll_args[i].fd];
                 connection_io(conn);
                 if (conn->state == STATE_END) {
                     fd2conn[conn->fd] = nullptr;
@@ -258,8 +260,10 @@ int main() {
                 }
             }
         }
+
+        
         if (poll_args[0].revents) {
-            accept_new_conn(fd2conn, fd);
+            (void)accept_new_conn(uniquePtrVector, fd);
         }
     }
 
