@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 #include <array>
+#pragma comment(lib, "ws2_32.lib")
 
 using namespace std::string_literals;
 
@@ -61,9 +62,9 @@ static int32_t read_res(SOCKET fd) {
     int32_t err = read_full(fd, rbuf, 4);
     if (err == SOCKET_ERROR) {
         if (errno == 0) {
-            msg("EOF");
+            msg("EOF"s);
         } else {
-           msg("read() error");
+           msg("read() error"s);
         }
         return err;
     }
@@ -71,19 +72,19 @@ static int32_t read_res(SOCKET fd) {
     uint32_t len = 0;
     memcpy(&len, rbuf.data(), 4);
     if (len > k_max_msg) {
-        msg("too long");
+        msg("too long"s);
         return -1;
     }
 
     rbuf.resize(len);
     err = read_full(fd, rbuf, len);
     if (err) {
-        msg("read() error");
+        msg("read() error"s);
         return err;
     }
 
     rbuf.push_back('\0');
-    std::cout << "server says: " << rbuf.data() << '\n';
+    std::cout << "server says: "s << rbuf.data() << '\n';
     return 0;
 }
 
@@ -107,7 +108,7 @@ int main() {
         die("connect"s);
     }
 
-    std::vector<std::string> query_list{"hello1", "hello2", "hello3"};
+    std::vector<std::string> query_list{"hello1"s, "hello2"s, "hello3"s};
     for (const auto& query : query_list) {
         int32_t err = send_req(fd, query);
         if (err) {

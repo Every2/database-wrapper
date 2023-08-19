@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstring>
 #include <memory>
+#pragma comment(lib, "ws2_32.lib")
 
 using namespace std::string_literals;
 
@@ -55,7 +56,7 @@ static std::unique_ptr<Conn> accept_new_conn(SOCKET listenSocket) {
     int client_len = sizeof(client_addr);
     SOCKET connfd = accept(listenSocket, reinterpret_cast<struct sockaddr*>(&client_addr), &client_len);
     if (connfd == INVALID_SOCKET) {
-        msg("accept() error");
+        msg("accept() error"s);
         return nullptr;
     }
 
@@ -115,9 +116,9 @@ static bool try_fill_buffer(Conn *conn) {
         }
     } else if (rv == 0) {
         if (!conn->rbuf.empty()) {
-            msg("Unexpected EOF()");
+            msg("Unexpected EOF()"s);
         } else {
-            msg("EOF");
+            msg("EOF"s);
         }
         conn->state = STATE_END;
         return false;
@@ -139,7 +140,7 @@ static bool try_flush_buffer(Conn *conn) {
     if (rv == SOCKET_ERROR) {
         int error = WSAGetLastError();
         if (error != WSAEWOULDBLOCK) {
-            msg("send() error");
+            msg("send() error"s);
             conn->state = STATE_END;
             return false;
         }
@@ -185,7 +186,7 @@ int main() {
     int val = 1;
     std::string convertedVal {std::to_string(val)};
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, convertedVal.data(), sizeof(val)) == SOCKET_ERROR) {
-        die("setsockopt()");
+        die("setsockopt()"s);
     }
 
     struct sockaddr_in addr = {};
@@ -214,13 +215,12 @@ int main() {
         for (const auto& conn: fd2conn) {
             if (conn) {
                 FD_SET(conn->fd, &readFds);
-                maxfd = std::max(maxfd, conn->fd);
             }
         }
 
         int rv = select(static_cast<int>(maxfd + 1), &readFds, nullptr, nullptr, nullptr);
         if (rv == SOCKET_ERROR) {
-            die("select");
+            die("select"s);
         }
 
         if (FD_ISSET(fd, &readFds)) {
