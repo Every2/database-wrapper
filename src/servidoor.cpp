@@ -7,7 +7,6 @@
 #include <cassert>
 #include <cstring>
 #include <memory>
-#pragma comment(lib, "ws2_32.lib")
 
 using namespace std::string_literals;
 

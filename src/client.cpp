@@ -5,7 +5,6 @@
 #include <cstring>
 #include <vector>
 #include <array>
-#pragma comment(lib, "ws2_32.lib")
 
 using namespace std::string_literals;
 
