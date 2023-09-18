@@ -5,19 +5,19 @@
 #include <ws2tcpip.h>
 #include <cstdlib>
 #include <cassert>
+#include <cstdint>
 
-#pragma comment(lib, "ws2_32.lib")
 static void msg(std::string_view msg) {
     std::cerr << msg << '\n';
 }
 
 static void die(std::string_view msg) {
     int err {WSAGetLastError()};
-    std::cerr << WSAGetLastError << msg << '\n';
+    std::cerr << err << msg << '\n';
     std::abort();
 }
 
-static UINT32 read_full(SOCKET fd, char* buf, size_t n) {
+static uint32_t read_full(SOCKET fd, char* buf, size_t n) {
     while (n > 0) {
         int rv {recv(fd, buf, n, 0)};
         if (rv <= 0) {
@@ -30,7 +30,7 @@ static UINT32 read_full(SOCKET fd, char* buf, size_t n) {
     return 0;
 }
 
-static UINT32 write_all(SOCKET fd, const char* buf, size_t n) {
+static uint32_t write_all(SOCKET fd, const char* buf, size_t n) {
     while (n > 0) {
         int rv {send(fd, buf, n, 0)};
         if (rv <= 0) {
@@ -45,8 +45,8 @@ static UINT32 write_all(SOCKET fd, const char* buf, size_t n) {
 
 const size_t k_max_msg = 4096; 
 
-static UINT32 send_req(SOCKET fd, const std::string_view text) {
-    UINT32 len = static_cast<UINT32>(text.length());
+static uint32_t send_req(SOCKET fd, const std::string_view text) {
+    uint32_t len = static_cast<uint32_t>(text.length());
     if (len > k_max_msg) {
         return -1;
     }
@@ -57,15 +57,15 @@ static UINT32 send_req(SOCKET fd, const std::string_view text) {
     return write_all(fd, wbuf, 4 + text.length());
 }
 
-static UINT32 read_res(SOCKET fd) {
+static uint32_t read_res(SOCKET fd) {
     char rbuf[4 + k_max_msg + 1];
-    UINT32 err = read_full(fd, rbuf, 4);
+    uint32_t err = read_full(fd, rbuf, 4);
     if (err) {
         msg("read() error");
         return err;
     }
 
-    UINT32 len {0};
+    uint32_t len {0};
     memcpy(&len, rbuf, 4);
     if (len > k_max_msg) {
         msg("too long");
@@ -103,12 +103,12 @@ int main() {
         die("connect");
     }
 
-    const char *query_list[3] {"hello1, hello2, hello3"};
+    const char *query_list[3] {"hello1", "hello2", "hello3"};
 
     for (size_t i {0}; i < 3; ++i) {
         UINT32 err {send_req(fd, query_list[i])};
         if (err) {
-            goto L_DONE;
+            std::cout << "-1";
         }
     }
     for (size_t i {0}; i  < 3; ++i) {

@@ -1,14 +1,16 @@
+#include <cstdint>
 #include <iostream>
 #include <vector>
 #include <string>
 #include <string_view>
 #include <WinSock2.h>
+#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <cstdlib>
 #include <cassert>
 
 
-static void msg(std::string_view msg) {
+static void msg(const char* msg) {
     std::cerr << msg << '\n';
 }
 
@@ -35,12 +37,12 @@ enum {
 
 struct Conn {
     SOCKET fd {INVALID_SOCKET};
-    u_int64 state {0};
+    uint32_t state {0};
     size_t rbuf_size {0};
-    UINT8 rbuf[4 + k_max_msg];
+    uint8_t rbuf[4 + k_max_msg];
     size_t wbuf_size {0};
     size_t wbuf_send {0};
-    UINT8 wbuf[4 + k_max_msg];
+    uint8_t wbuf[4 + k_max_msg];
 };
 
 static void conn_put(std::vector<Conn *>& fd2conn, struct Conn *conn) {
@@ -50,7 +52,7 @@ static void conn_put(std::vector<Conn *>& fd2conn, struct Conn *conn) {
     fd2conn.at(conn->fd) = conn;
 }
 
-static UINT32 accept_new_conn(std::vector<Conn *>& fd2conn, SOCKET listenfd) {
+static int32_t accept_new_conn(std::vector<Conn *>& fd2conn, SOCKET listenfd) {
     struct sockaddr_in client_addr {};
     int socketlen {sizeof(client_addr)};
     SOCKET connfd {accept(listenfd, reinterpret_cast<sockaddr *>(&client_addr), &socketlen)};
@@ -84,7 +86,7 @@ static bool try_one_request(Conn *conn) {
         return false;
     }
 
-    UINT32 len {0};
+    uint32_t len {0};
     memcpy(&len, &conn->rbuf[0], 4);
     if (len > k_max_msg) {
         msg("too long");
@@ -96,7 +98,7 @@ static bool try_one_request(Conn *conn) {
         return false;
     }
 
-    std::cout << "client says " << len << &conn->rbuf[4];
+    std::cout << "client says " << len << conn->rbuf[4];
 
     memcpy(&conn->wbuf[0], &len, 4);
     memcpy(&conn->wbuf[4], &conn->rbuf[4], len);
@@ -114,6 +116,7 @@ static bool try_one_request(Conn *conn) {
     return (conn->state == STATE_REQ);
 } 
 
+
 static bool try_fill_buffer(Conn *conn) {
     assert(conn->rbuf_size  < sizeof(conn->rbuf));
 
@@ -129,6 +132,7 @@ static bool try_fill_buffer(Conn *conn) {
             return false;
         }
     }
+
     if (rv == 0) {
         if (conn->rbuf_size > 0) {
             msg("Unexpected EOF");
@@ -140,7 +144,7 @@ static bool try_fill_buffer(Conn *conn) {
         return false;
     }
 
-    conn->rbuf_size += rv;
+    conn->rbuf_size += static_cast<size_t>(rv);
     assert(conn->rbuf_size <= sizeof(conn->rbuf));
     while(try_one_request(conn)) {};
     return (conn->state == STATE_REQ);
@@ -286,7 +290,7 @@ int main() {
             if (conn->state == STATE_END) {
                 fd2conn[conn->fd] = NULL;
                 closesocket(conn->fd);
-                delete conn;
+                delete [] conn;
             }
         }        
     }
