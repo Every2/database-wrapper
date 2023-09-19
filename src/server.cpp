@@ -39,7 +39,7 @@ struct Conn {
     SOCKET fd {INVALID_SOCKET};
     uint32_t state {0};
     size_t rbuf_size {0};
-    uint8_t rbuf[4 + k_max_msg];
+    uint8_t rbuf[4 + k_max_msg + 1];
     size_t wbuf_size {0};
     size_t wbuf_send {0};
     uint8_t wbuf[4 + k_max_msg];
@@ -98,7 +98,7 @@ static bool try_one_request(Conn *conn) {
         return false;
     }
 
-    std::cout << "client says " << len << conn->rbuf[4];
+    std::cout << "client says: " << &conn->rbuf[4] << '\n';
 
     memcpy(&conn->wbuf[0], &len, 4);
     memcpy(&conn->wbuf[4], &conn->rbuf[4], len);

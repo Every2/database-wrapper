@@ -106,13 +106,13 @@ int main() {
     const char *query_list[3] {"hello1", "hello2", "hello3"};
 
     for (size_t i {0}; i < 3; ++i) {
-        UINT32 err {send_req(fd, query_list[i])};
+        uint32_t err {send_req(fd, query_list[i])};
         if (err) {
-            std::cout << "-1";
+            goto L_DONE;
         }
     }
     for (size_t i {0}; i  < 3; ++i) {
-        UINT32 err {read_res(fd)};
+        uint32_t err {read_res(fd)};
         if (err) {
             goto L_DONE;
         }
