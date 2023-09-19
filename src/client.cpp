@@ -2,7 +2,6 @@
 #include <vector>
 #include <string_view>
 #include <WinSock2.h>
-#include <ws2tcpip.h>
 #include <cstdlib>
 #include <cassert>
 #include <cstdint>
@@ -54,10 +53,14 @@ static uint32_t send_req(SOCKET fd, const std::string text) {
         return -1;
     }
 
+    len = static_cast<uint32_t>(text.length());
+
     char wbuf[4 + k_max_msg];
     memcpy(wbuf, &len, 4); 
-    memcpy(wbuf + 4, text.data(), text.length());
-    return write_all(fd, wbuf, 4 + text.length());
+    memcpy(wbuf + 4, text.data(), len);
+
+    
+    return write_all(fd, wbuf, 4 + len);
 }
 
 static uint32_t read_res(SOCKET fd) {
@@ -115,6 +118,7 @@ int main() {
             goto L_DONE;
         }
     }
+
     for (size_t i {0}; i  < 3; ++i) {
         uint32_t err {read_res(fd)};
         if (err) {
