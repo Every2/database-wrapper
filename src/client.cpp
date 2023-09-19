@@ -2,10 +2,12 @@
 #include <vector>
 #include <string_view>
 #include <WinSock2.h>
-#include <ws2tcpip.h>
 #include <cstdlib>
 #include <cassert>
 #include <cstdint>
+#include <array>
+
+using namespace std::string_literals;
 
 static void msg(std::string_view msg) {
     std::cerr << msg << '\n';
@@ -45,20 +47,24 @@ static uint32_t write_all(SOCKET fd, const char* buf, size_t n) {
 
 const size_t k_max_msg = 4096; 
 
-static uint32_t send_req(SOCKET fd, const std::string_view text) {
+static uint32_t send_req(SOCKET fd, const std::string text) {
     uint32_t len = static_cast<uint32_t>(text.length());
     if (len > k_max_msg) {
         return -1;
     }
 
+    len = static_cast<uint32_t>(text.length());
+
     char wbuf[4 + k_max_msg];
     memcpy(wbuf, &len, 4); 
-    memcpy(wbuf + 4, text.data(), text.length());
-    return write_all(fd, wbuf, 4 + text.length());
+    memcpy(wbuf + 4, text.data(), len);
+
+    
+    return write_all(fd, wbuf, 4 + len);
 }
 
 static uint32_t read_res(SOCKET fd) {
-    char rbuf[4 + k_max_msg + 1];
+    char rbuf[4 + k_max_msg - 1];
     uint32_t err = read_full(fd, rbuf, 4);
     if (err) {
         msg("read() error");
@@ -103,14 +109,16 @@ int main() {
         die("connect");
     }
 
-    const char *query_list[3] {"hello1", "hello2", "hello3"};
+    //const char *query_list[3] {"hello1", "hello2", "hello3"};
+    std::array <std::string, 3> query_list {"hello1"s, "hello2"s, "hello3"s};
 
-    for (size_t i {0}; i < 3; ++i) {
+    for (size_t i {0}; i < query_list.size(); ++i) { 
         uint32_t err {send_req(fd, query_list[i])};
         if (err) {
             goto L_DONE;
         }
     }
+
     for (size_t i {0}; i  < 3; ++i) {
         uint32_t err {read_res(fd)};
         if (err) {

@@ -4,13 +4,12 @@
 #include <string>
 #include <string_view>
 #include <WinSock2.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <cstdlib>
 #include <cassert>
+#include <array>
 
 
-static void msg(const char* msg) {
+static void msg(std::string_view msg) {
     std::cerr << msg << '\n';
 }
 
@@ -39,10 +38,10 @@ struct Conn {
     SOCKET fd {INVALID_SOCKET};
     uint32_t state {0};
     size_t rbuf_size {0};
-    uint8_t rbuf[4 + k_max_msg + 1];
+    std::array<uint8_t, 4 + k_max_msg> rbuf;
     size_t wbuf_size {0};
     size_t wbuf_send {0};
-    uint8_t wbuf[4 + k_max_msg];
+    std::array<uint8_t, 4 + k_max_msg>  wbuf;
 };
 
 static void conn_put(std::vector<Conn *>& fd2conn, struct Conn *conn) {
@@ -87,7 +86,7 @@ static bool try_one_request(Conn *conn) {
     }
 
     uint32_t len {0};
-    memcpy(&len, &conn->rbuf[0], 4);
+    memcpy(&len, &conn->rbuf.at(0), 4);
     if (len > k_max_msg) {
         msg("too long");
         conn->state = STATE_END;
@@ -98,15 +97,16 @@ static bool try_one_request(Conn *conn) {
         return false;
     }
 
-    std::cout << "client says: " << &conn->rbuf[4] << '\n';
+    std::string client_msg(reinterpret_cast<char*>(&conn->rbuf.at(4)), len);
+    std::cout << "client says: " << client_msg << '\n';
 
-    memcpy(&conn->wbuf[0], &len, 4);
-    memcpy(&conn->wbuf[4], &conn->rbuf[4], len);
+    memcpy(&conn->wbuf.at(0), &len, 4);
+    memcpy(&conn->wbuf.at(4), &conn->rbuf.at(4), len);
     conn->wbuf_size = 4 + len;
 
     size_t remain {conn->rbuf_size - 4 - len};
     if (remain) {
-        memmove(conn->rbuf, &conn->rbuf[4 + len], remain);
+        memmove(conn->rbuf.data(), &conn->rbuf.at(4 + len), remain);
     }
     conn->rbuf_size = remain;
 
@@ -145,7 +145,7 @@ static bool try_fill_buffer(Conn *conn) {
     }
 
     conn->rbuf_size += static_cast<size_t>(rv);
-    assert(conn->rbuf_size <= sizeof(conn->rbuf));
+    assert(conn->rbuf_size <= conn->rbuf.size());
     while(try_one_request(conn)) {};
     return (conn->state == STATE_REQ);
 }
