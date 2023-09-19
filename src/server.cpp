@@ -39,7 +39,7 @@ struct Conn {
     SOCKET fd {INVALID_SOCKET};
     uint32_t state {0};
     size_t rbuf_size {0};
-    uint8_t rbuf[4 + k_max_msg + 1];
+    uint8_t rbuf[4 + k_max_msg];
     size_t wbuf_size {0};
     size_t wbuf_send {0};
     uint8_t wbuf[4 + k_max_msg];

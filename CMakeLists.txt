@@ -7,12 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(include)
 
 add_executable(client src/client.cpp)
-if(WIN32)
-  target_link_libraries(client wsock32 ws2_32)
-endif()
+target_link_libraries(client wsock32 ws2_32)
 
 add_executable(server src/server.cpp)
-if(WIN32)
-  target_link_libraries(server wsock32 ws2_32)
-endif()
+target_link_libraries(server wsock32 ws2_32)
+
 
