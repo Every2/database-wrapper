@@ -7,8 +7,6 @@
 #include <cstdint>
 #include <array>
 
-using namespace std::string_literals;
-
 static void msg(std::string_view msg) {
     std::cerr << msg << '\n';
 }
@@ -109,8 +107,8 @@ int main() {
         die("connect");
     }
 
-    //const char *query_list[3] {"hello1", "hello2", "hello3"};
-    std::array <std::string, 3> query_list {"hello1"s, "hello2"s, "hello3"s};
+    
+    std::array <std::string, 3> query_list {"hello1", "hello2", "hello3"};
 
     for (size_t i {0}; i < query_list.size(); ++i) { 
         uint32_t err {send_req(fd, query_list[i])};
