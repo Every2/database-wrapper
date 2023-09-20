@@ -13,3 +13,8 @@ add_executable(server src/server.cpp)
 target_link_libraries(server wsock32 ws2_32)
 
 
+add_executable(test_client tests/changes/client.cpp)
+target_link_libraries(test_client wsock32 ws2_32)
+
+add_executable(test_server tests/changes/server.cpp)
+target_link_libraries(test_server wsock32 ws2_32)
