@@ -1,8 +1,13 @@
 #include <cassert>
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <vector>
 #include <map>
 #include <iostream>

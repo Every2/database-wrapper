@@ -11,5 +11,3 @@ target_link_libraries(client wsock32 ws2_32)
 
 add_executable(server src/server.cpp)
 target_link_libraries(server wsock32 ws2_32)
-
-
