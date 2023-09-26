@@ -12,12 +12,12 @@
 
 
 static void msg(std::string_view msg) {
-    std::cerr << stderr << msg;
-}    
+    std::cerr << msg;
+}
 
 static void die(std::string_view msg) {
     int err {errno};
-    std::cout << stderr << err << msg;
+    std::cout << err << msg;
     std::abort();
 }
 
@@ -25,7 +25,7 @@ static int32_t read_full(int fd, char *buf, size_t n) {
     while (n > 0) {
         ssize_t rv = read(fd, buf, n);
         if (rv <= 0) {
-            return -1;  
+            return -1;
         }
         assert(static_cast<size_t>(rv) <= n);
         n -= static_cast<size_t>(rv);
@@ -38,7 +38,7 @@ static int32_t write_all(int fd, const char *buf, size_t n) {
     while (n > 0) {
         ssize_t rv = write(fd, buf, n);
         if (rv <= 0) {
-            return -1;  
+            return -1;
         }
         assert(static_cast<size_t>(rv) <= n);
         n -= static_cast<size_t>(rv);
@@ -86,7 +86,7 @@ static int32_t read_res(int fd) {
     }
 
     uint32_t len {0};
-    memcpy(&len, rbuf, 4);  
+    memcpy(&len, rbuf, 4);
     if (len > k_max_msg) {
         msg("too long");
         return -1;
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in addr {};
     addr.sin_family = AF_INET;
     addr.sin_port = ntohs(1234);
-    addr.sin_addr.s_addr = ntohl(INADDR_LOOPBACK); 
+    addr.sin_addr.s_addr = ntohl(INADDR_LOOPBACK);
     int rv {connect(fd, (const struct sockaddr *)&addr, sizeof(addr))};
     if (rv) {
         die("connect");

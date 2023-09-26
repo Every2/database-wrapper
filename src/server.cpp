@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,11 @@
 #include <map>
 #include <string_view>
 #include <array>
+#include "hashtable.h"
+
+#define container_of(ptr, type, member) ({                  \
+    const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+    (type *)( (char *)__mptr - offsetof(type, member) );})
 
 static void msg(std::string_view msg) {
     std::cerr << msg << '\n';
@@ -21,13 +27,13 @@ static void msg(std::string_view msg) {
 
 static void die(std::string_view msg) {
     int err = errno;
-    std::cerr << stderr << msg << '\n';
+    std::cerr << err << msg << '\n';
     std::abort();
 }
 
 static void fd_set_nb(int fd) {
     errno = 0;
-    int flags = fcntl(fd, F_GETFL, 0);
+    int flags {fcntl(fd, F_GETFL, 0)};
     if (errno) {
         die("fcntl error");
         return;
@@ -96,8 +102,7 @@ static void state_res(Conn *conn);
 
 const size_t k_max_args {1024};
 
-static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string> &out)
-{
+static int32_t parse_req(const uint8_t *data, size_t len, std::vector<std::string>& out) {
     if (len < 4) {
         return -1;
     }
@@ -133,33 +138,84 @@ enum {
     RES_NX = 2,
 };
 
-static std::map<std::string, std::string> g_map;
+static struct {
+    Hmap db;
+} g_data;
 
-static uint32_t do_get(const std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
+// the structure for the key
+struct Entry {
+    struct HNode node;
+    std::string key;
+    std::string val;
+};
+
+static bool entry_eq(HNode *lhs, HNode *rhs) {
+    struct Entry *le {container_of(lhs, struct Entry, node)};
+    struct Entry *re {container_of(rhs, struct Entry, node)};
+    return lhs->hcode == rhs->hcode && le->key == re->key;
+}
+
+static uint64_t str_hash(const uint8_t *data, size_t len) {
+    uint32_t h {0x811C9DC5};
+    for (size_t i {0}; i < len; ++i) {
+        h = (h + data[i]) * 0x01000193;
+    }
+    return h;
+}
+
+static uint32_t do_get(std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
 {
-    if (!g_map.count(cmd.at(1))) {
+    Entry key;
+    key.key.swap(cmd.at(1));
+    key.node.hcode = str_hash(reinterpret_cast<uint8_t *>(key.key.data()), key.key.size());
+
+    HNode* node {hm_lookup(&g_data.db, &key.node, &entry_eq)};
+    if (!node) {
         return RES_NX;
     }
-    std::string& val = g_map.at(cmd.at(1));
+
+
+    std::string& val = container_of(node, Entry, node)->val;
     assert(val.size() <= k_max_msg);
     memcpy(res, val.data(), val.size());
     *reslen = static_cast<uint32_t>(val.size());
     return RES_OK;
 }
 
-static uint32_t do_set(const std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
+static uint32_t do_set(std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
 {
     static_cast<void>(res);
     static_cast<void>(reslen);
-    g_map.at(cmd.at(1)) = cmd.at(2);
+    Entry key;
+    key.key.swap(cmd.at(1));
+    key.node.hcode = str_hash(reinterpret_cast<uint8_t *>(key.key.data()), key.key.size());
+
+    HNode *node {hm_lookup(&g_data.db, &key.node, &entry_eq)};
+    if (node) {
+        container_of(node, Entry, node)->val.swap(cmd.at(2));
+    } else {
+        Entry *ent {new Entry()};
+        ent->key.swap(key.key);
+        ent->node.hcode = key.node.hcode;
+        ent->val.swap(cmd.at(2));
+        hm_insert(&g_data.db, &ent->node);
+    }
     return RES_OK;
+
 }
 
-static uint32_t do_del(const std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
+static uint32_t do_del(std::vector<std::string>& cmd, uint8_t *res, uint32_t *reslen)
 {
     static_cast<void>(res);
     static_cast<void>(reslen);
-    g_map.erase(cmd.at(1));
+    Entry key;
+    key.key.swap(cmd.at(1));
+    key.node.hcode = str_hash(reinterpret_cast<uint8_t *>(key.key.data()), key.key.size());
+
+    HNode *node {hm_pop(&g_data.db, &key.node, &entry_eq)};
+    if (node) {
+        delete container_of(node, Entry, node);
+    }
     return RES_OK;
 }
 
@@ -319,7 +375,7 @@ int main() {
     struct sockaddr_in addr {};
     addr.sin_family = AF_INET;
     addr.sin_port = ntohs(1234);
-    addr.sin_addr.s_addr = ntohl(0);    // wildcard address 0.0.0.0
+    addr.sin_addr.s_addr = ntohl(0);   
     int rv = bind(fd, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
     if (rv) {
         die("bind()");
