@@ -12,12 +12,12 @@
 
 
 static void msg(std::string_view msg) {
-    std::cerr << stderr << msg;
+    std::cerr << msg;
 }    
 
 static void die(std::string_view msg) {
     int err {errno};
-    std::cout << stderr << err << msg;
+    std::cout << err << msg;
     std::abort();
 }
 
@@ -59,7 +59,7 @@ static int32_t send_req(int fd, const std::vector<std::string>& cmd) {
     }
 
     char wbuf[4 + k_max_msg];
-    memcpy(&wbuf[0], &len, 4);  // assume little endian
+    memcpy(&wbuf[0], &len, 4);  
     uint32_t n {static_cast<uint32_t>(cmd.size())};
     memcpy(&wbuf[4], &n, 4);
     size_t cur {8};
