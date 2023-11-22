@@ -1,0 +1,1 @@
+The lib directory is the original source code that was did in c with some c++ features and the original data structures of tutorial was made. If you wanna use the code you can just use the cmakelists.txt and run the original project.
