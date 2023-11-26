@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.12)
-project(redis_from_scratch)
+enable_testing()
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
+add_executable(test_database test.cpp)
 
+target_link_libraries(test_database gtest gtest_main)
+
+add_test(test_database test_database)
