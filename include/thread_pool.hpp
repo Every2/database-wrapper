@@ -2,22 +2,23 @@
 #include <deque>
 #include <thread>
 #include <mutex>
-#include <any>
 #include <condition_variable>
-
-using function_pointer = void(*)(void *);
+#include <functional>
+#include <cassert>
+#include <memory>
+#include <iostream>
 
 struct Work {
-    function_pointer function = nullptr;
-    std::any *arg = nullptr;
+    std::function<void(void *)> function {nullptr};
+    std::shared_ptr<void> arg;
 };
 
-struct Threadpool {
+struct ThreadPool {
     std::vector<std::thread> threads;
     std::deque<Work> queue;
-    std::mutex mu;
+    std::mutex mutex;
     std::condition_variable not_empty;
 };
 
-void thread_pool_init(Threadpool *thread_pool, size_t number_of_threads);
-void thread_pool_queue(Threadpool *thread_pool, function_pointer, std::any *arg);
+void thread_pool_init(std::shared_ptr<ThreadPool> threadpool, size_t num_threads);
+void thread_pool_queue(std::shared_ptr<ThreadPool> threadpool, std::function<void(void *)> function, std::shared_ptr<void> arg);
