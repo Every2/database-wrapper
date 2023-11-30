@@ -1,15 +1,11 @@
 #include <iostream>
-#include <string>
+#include <string_view>
 
 class Error {
 
 public:
-    Error(const std::string& message) : errorMessage(message) {};
-
-    void die();
-    
-private:
-    std::string errorMessage {};
+    void message(std::string_view errorMessage);
+    void die(std::string_view errorMessage);
 };
 
 enum class Errors {
